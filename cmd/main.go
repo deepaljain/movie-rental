@@ -24,5 +24,6 @@ func main() {
 	router.GET("/movies/filter", movies.FilterMoviesHandler(db))
 	router.GET("/movies/:id", movies.GetMovieByIDHandler(db))
 	router.POST("/cart", cart.AddToCartHandler(db))
+	router.GET("/cart/:user_id", cart.ViewCartHandler(db))
 	router.Run(":8080")
 }
