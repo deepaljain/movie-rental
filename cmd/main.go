@@ -20,5 +20,6 @@ func main() {
 	r := gin.Default()
 	r.GET("/hello", hello.HelloHandler)
 	r.GET("/movies", movies.ListMoviesHandler(db))
+	r.GET("/movies/filter", movies.FilterMoviesHandler(db))
 	r.Run(":8080")
 }

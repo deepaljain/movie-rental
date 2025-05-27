@@ -7,4 +7,5 @@ type Movie struct {
     Plot    string
     Genre   string
     ImdbID  string
+    Actors  string
 }
