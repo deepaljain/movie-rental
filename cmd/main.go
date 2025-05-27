@@ -7,6 +7,7 @@ import (
 	_ "github.com/lib/pq"
 	"movie-rental/pkg/hello"
 	"movie-rental/pkg/movies"
+	"movie-rental/pkg/cart"
 )
 
 func main() {
@@ -17,10 +18,11 @@ func main() {
 	}
 	defer db.Close()
 
-	r := gin.Default()
-	r.GET("/hello", hello.HelloHandler)
-	r.GET("/movies", movies.ListMoviesHandler(db))
-	r.GET("/movies/filter", movies.FilterMoviesHandler(db))
-	r.GET("/movies/:id", movies.GetMovieByIDHandler(db))
-	r.Run(":8080")
+	router := gin.Default()
+	router.GET("/hello", hello.HelloHandler)
+	router.GET("/movies", movies.ListMoviesHandler(db))
+	router.GET("/movies/filter", movies.FilterMoviesHandler(db))
+	router.GET("/movies/:id", movies.GetMovieByIDHandler(db))
+	router.POST("/cart", cart.AddToCartHandler(db))
+	router.Run(":8080")
 }
