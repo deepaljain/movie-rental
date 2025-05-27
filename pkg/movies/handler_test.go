@@ -15,7 +15,6 @@ import (
 func setupRouter(db *sql.DB) *gin.Engine {
 	router := gin.Default()
 	router.GET("/movies", ListMoviesHandler(db))
-	router.GET("/movies/filter", FilterMoviesHandler(db))
     router.GET("/movies/:id", GetMovieByIDHandler(db))
 	return router
 }
@@ -24,7 +23,7 @@ func newMovieRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{"movie_id", "title", "year", "plot", "genre", "imdbid", "actors"})
 }
 
-func TestListMoviesHandler(t *testing.T) {
+func TestListMoviesHandler_ListAll(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db, mock, err := sqlmock.New()
@@ -35,7 +34,7 @@ func TestListMoviesHandler(t *testing.T) {
 		AddRow(1, "Movie 1", 2020, "Plot 1", "Action", "tt1234567", "Actor A").
 		AddRow(2, "Movie 2", 2021, "Plot 2", "Drama", "tt7654321", "Actor B")
 
-	mock.ExpectQuery(`SELECT \* FROM movies`).WillReturnRows(rows)
+	mock.ExpectQuery(`SELECT \* FROM movies WHERE 1=1`).WillReturnRows(rows)
 
 	router := setupRouter(db)
 
@@ -53,7 +52,7 @@ func TestListMoviesHandler(t *testing.T) {
 	assert.Equal(t, "Movie 2", movies[1].Title)
 }
 
-func TestFilterMoviesByGenre(t *testing.T) {
+func TestListMoviesHandler_FilterByGenre(t *testing.T) {
     gin.SetMode(gin.TestMode)
     db, mock, err := sqlmock.New()
     assert.NoError(t, err)
@@ -67,7 +66,7 @@ func TestFilterMoviesByGenre(t *testing.T) {
         WithArgs("Action").
         WillReturnRows(rows)
 
-    req, _ := http.NewRequest("GET", "/movies/filter?genre=Action", nil)
+    req, _ := http.NewRequest("GET", "/movies?genre=Action", nil)
     recorder := httptest.NewRecorder()
     router.ServeHTTP(recorder, req)
 
@@ -80,7 +79,7 @@ func TestFilterMoviesByGenre(t *testing.T) {
     assert.Equal(t, "Movie 1", movies[0].Title)
 }
 
-func TestFilterMoviesByActor(t *testing.T) {
+func TestListMoviesHandler_FilterByActor(t *testing.T) {
     gin.SetMode(gin.TestMode)
     db, mock, err := sqlmock.New()
     assert.NoError(t, err)
@@ -94,7 +93,7 @@ func TestFilterMoviesByActor(t *testing.T) {
         WithArgs("Actor C").
         WillReturnRows(rows)
 
-    req, _ := http.NewRequest("GET", "/movies/filter?actor=Actor C", nil)
+    req, _ := http.NewRequest("GET", "/movies?actor=Actor C", nil)
     recorder := httptest.NewRecorder()
     router.ServeHTTP(recorder, req)
 
@@ -107,7 +106,7 @@ func TestFilterMoviesByActor(t *testing.T) {
     assert.Equal(t, "Movie 2", movies[0].Title)
 }
 
-func TestFilterMoviesByYear(t *testing.T) {
+func TestListMoviesHandler_FilterByYear(t *testing.T) {
     gin.SetMode(gin.TestMode)
     db, mock, err := sqlmock.New()
     assert.NoError(t, err)
@@ -121,7 +120,7 @@ func TestFilterMoviesByYear(t *testing.T) {
         WithArgs("2022").
         WillReturnRows(rows)
 
-    req, _ := http.NewRequest("GET", "/movies/filter?year=2022", nil)
+    req, _ := http.NewRequest("GET", "/movies?year=2022", nil)
     recorder := httptest.NewRecorder()
     router.ServeHTTP(recorder, req)
 
@@ -134,7 +133,7 @@ func TestFilterMoviesByYear(t *testing.T) {
     assert.Equal(t, "Movie 3", movies[0].Title)
 }
 
-func TestFilterMoviesByActorAndYear(t *testing.T) {
+func TestListMoviesHandler_FilterByActorAndYear(t *testing.T) {
     gin.SetMode(gin.TestMode)
     db, mock, err := sqlmock.New()
     assert.NoError(t, err)
@@ -148,7 +147,7 @@ func TestFilterMoviesByActorAndYear(t *testing.T) {
         WithArgs("Actor G", "2023").
         WillReturnRows(rows)
 
-    req, _ := http.NewRequest("GET", "/movies/filter?actor=Actor G&year=2023", nil)
+    req, _ := http.NewRequest("GET", "/movies?actor=Actor G&year=2023", nil)
     recorder := httptest.NewRecorder()
     router.ServeHTTP(recorder, req)
 

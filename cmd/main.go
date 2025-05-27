@@ -21,7 +21,6 @@ func main() {
 	router := gin.Default()
 	router.GET("/hello", hello.HelloHandler)
 	router.GET("/movies", movies.ListMoviesHandler(db))
-	router.GET("/movies/filter", movies.FilterMoviesHandler(db))
 	router.GET("/movies/:id", movies.GetMovieByIDHandler(db))
 	router.POST("/cart", cart.AddToCartHandler(db))
 	router.GET("/cart/:user_id", cart.ViewCartHandler(db))
