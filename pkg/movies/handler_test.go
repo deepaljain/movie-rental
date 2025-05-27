@@ -16,6 +16,7 @@ func setupRouter(db *sql.DB) *gin.Engine {
 	router := gin.Default()
 	router.GET("/movies", ListMoviesHandler(db))
 	router.GET("/movies/filter", FilterMoviesHandler(db))
+    router.GET("/movies/:id", GetMovieByIDHandler(db))
 	return router
 }
 
@@ -158,4 +159,47 @@ func TestFilterMoviesByActorAndYear(t *testing.T) {
     assert.NoError(t, err)
     assert.Len(t, movies, 1)
     assert.Equal(t, "Movie 4", movies[0].Title)
+}
+
+func TestGetMovieByIDHandler_Found(t *testing.T) {
+    gin.SetMode(gin.TestMode)
+    db, mock, err := sqlmock.New()
+    assert.NoError(t, err)
+    defer db.Close()
+
+    router := setupRouter(db)
+
+    row := newMovieRows().
+        AddRow(1, "Movie 1", 2020, "Plot 1", "Action", "tt1234567", "Actor A, Actor B")
+    mock.ExpectQuery(`SELECT \* FROM movies WHERE movie_id = \$1`).
+        WithArgs("1").WillReturnRows(row)
+
+    req, _ := http.NewRequest("GET", "/movies/1", nil)
+    recorder := httptest.NewRecorder()
+    router.ServeHTTP(recorder, req)
+
+    assert.Equal(t, http.StatusOK, recorder.Code)
+
+    var movie Movie
+    err = json.NewDecoder(recorder.Body).Decode(&movie)
+    assert.NoError(t, err)
+    assert.Equal(t, "Movie 1", movie.Title)
+}
+
+func TestGetMovieByIDHandler_NotFound(t *testing.T) {
+    gin.SetMode(gin.TestMode)
+    db, mock, err := sqlmock.New()
+    assert.NoError(t, err)
+    defer db.Close()
+
+    router := setupRouter(db)
+
+    mock.ExpectQuery(`SELECT \* FROM movies WHERE movie_id = \$1`).
+        WithArgs("99").WillReturnRows(newMovieRows())
+
+    req, _ := http.NewRequest("GET", "/movies/99", nil)
+    recorder := httptest.NewRecorder()
+    router.ServeHTTP(recorder, req)
+
+    assert.Equal(t, http.StatusNotFound, recorder.Code)
 }

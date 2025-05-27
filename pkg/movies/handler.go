@@ -74,3 +74,21 @@ func FilterMoviesHandler(db *sql.DB) gin.HandlerFunc {
         c.JSON(http.StatusOK, movies)
     }
 }
+
+func GetMovieByIDHandler(db *sql.DB) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        id := c.Param("id")
+        var m Movie
+        err := db.QueryRow(
+            "SELECT * FROM movies WHERE movie_id = $1", id,
+        ).Scan(&m.MovieID, &m.Title, &m.Year, &m.Plot, &m.Genre, &m.ImdbID, &m.Actors)
+        if err == sql.ErrNoRows {
+            c.JSON(http.StatusNotFound, gin.H{"error": "Movie not found"})
+            return
+        } else if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, m)
+    }
+}

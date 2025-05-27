@@ -21,5 +21,6 @@ func main() {
 	r.GET("/hello", hello.HelloHandler)
 	r.GET("/movies", movies.ListMoviesHandler(db))
 	r.GET("/movies/filter", movies.FilterMoviesHandler(db))
+	r.GET("/movies/:id", movies.GetMovieByIDHandler(db))
 	r.Run(":8080")
 }
