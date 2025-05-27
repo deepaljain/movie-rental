@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	db, err := sql.Open("postgres", "postgres://deepaljain:postgres@localhost:5432/movie?sslmode=disable")
+	db, err := sql.Open("postgres", "postgres://deepaljain:postgres@localhost:5432/movierental?sslmode=disable")
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
