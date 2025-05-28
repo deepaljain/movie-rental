@@ -18,11 +18,14 @@ func main() {
 	}
 	defer db.Close()
 
+	movieRepo := movies.NewMovieRepository(db)
+	cartRepo := cart.NewRepository(db)
+
 	router := gin.Default()
 	router.GET("/hello", hello.HelloHandler)
-	router.GET("/movies", movies.ListMoviesHandler(db))
-	router.GET("/movies/:id", movies.GetMovieByIDHandler(db))
-	router.POST("/cart", cart.AddToCartHandler(db))
-	router.GET("/cart/:user_id", cart.ViewCartHandler(db))
+	router.GET("/movies", movies.ListMoviesHandler(movieRepo))
+	router.GET("/movies/:id", movies.GetMovieByIDHandler(movieRepo))
+	router.POST("/cart", cart.AddToCartHandler(cartRepo))
+	router.GET("/cart/:user_id", cart.ViewCartHandler(cartRepo))
 	router.Run(":8080")
 }

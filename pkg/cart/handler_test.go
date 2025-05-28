@@ -1,44 +1,50 @@
 package cart
 
 import (
-	"bytes"
-	"database/sql"
-	"encoding/json"
-	"errors"
-	"movie-rental/pkg/movies"
-	"net/http"
-	"net/http/httptest"
-	"testing"
+    "bytes"
+    "encoding/json"
+    "errors"
+    "movie-rental/pkg/movies"
+    "net/http"
+    "net/http/httptest"
+    "testing"
 
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/assert"
+    "github.com/gin-gonic/gin"
+    "github.com/stretchr/testify/assert"
 )
 
-func setupRouter(db *sql.DB) *gin.Engine {
-    router := gin.Default()
-    router.POST("/cart", AddToCartHandler(db))
-    router.GET("/cart/:user_id", ViewCartHandler(db))
-    return router
+// Mock Repository for handler tests
+type mockRepository struct {
+    AddToCartFunc   func(userID, movieID int) error
+    GetCartItemsFunc func(userID string) ([]movies.Movie, error)
 }
 
-func newMovieRows() *sqlmock.Rows {
-	return sqlmock.NewRows([]string{"movie_id", "title", "year", "plot", "genre", "imdbid", "actors"})
+func (m *mockRepository) AddToCart(userID, movieID int) error {
+    return m.AddToCartFunc(userID, movieID)
+}
+func (m *mockRepository) GetCartItems(userID string) ([]movies.Movie, error) {
+    return m.GetCartItemsFunc(userID)
+}
+
+func setupRouter(repo Repository) *gin.Engine {
+    router := gin.Default()
+    router.POST("/cart", AddToCartHandler(repo))
+    router.GET("/cart/:user_id", ViewCartHandler(repo))
+    return router
 }
 
 func TestAddToCartHandler_Success(t *testing.T) {
     gin.SetMode(gin.TestMode)
-    db, mock, err := sqlmock.New()
-    assert.NoError(t, err)
-    defer db.Close()
+    repo := &mockRepository{
+        AddToCartFunc: func(userID, movieID int) error {
+            assert.Equal(t, 1, userID)
+            assert.Equal(t, 2, movieID)
+            return nil
+        },
+    }
+    router := setupRouter(repo)
 
-    mock.ExpectExec("INSERT INTO cart").
-        WithArgs(1, 2).
-        WillReturnResult(sqlmock.NewResult(1, 1))
-
-    router := setupRouter(db)
-
-	buf := new(bytes.Buffer)
+    buf := new(bytes.Buffer)
     _ = json.NewEncoder(buf).Encode(AddToCartRequest{UserID: 1, MovieID: 2})
 
     req, _ := http.NewRequest("POST", "/cart", buf)
@@ -53,11 +59,8 @@ func TestAddToCartHandler_Success(t *testing.T) {
 
 func TestAddToCartHandler_BadRequest(t *testing.T) {
     gin.SetMode(gin.TestMode)
-    db, _, err := sqlmock.New()
-    assert.NoError(t, err)
-    defer db.Close()
-
-    router := setupRouter(db)
+    repo := &mockRepository{}
+    router := setupRouter(repo)
 
     req, _ := http.NewRequest("POST", "/cart", bytes.NewBuffer([]byte(`invalid json`)))
     req.Header.Set("Content-Type", "application/json")
@@ -69,15 +72,12 @@ func TestAddToCartHandler_BadRequest(t *testing.T) {
 
 func TestAddToCartHandler_DBError(t *testing.T) {
     gin.SetMode(gin.TestMode)
-    db, mock, err := sqlmock.New()
-    assert.NoError(t, err)
-    defer db.Close()
-
-    mock.ExpectExec("INSERT INTO cart").
-        WithArgs(1, 2).
-        WillReturnError(sql.ErrConnDone)
-
-    router := setupRouter(db)
+    repo := &mockRepository{
+        AddToCartFunc: func(userID, movieID int) error {
+            return errors.New("db error")
+        },
+    }
+    router := setupRouter(repo)
 
     buf := new(bytes.Buffer)
     _ = json.NewEncoder(buf).Encode(AddToCartRequest{UserID: 1, MovieID: 2})
@@ -89,23 +89,21 @@ func TestAddToCartHandler_DBError(t *testing.T) {
     router.ServeHTTP(recorder, req)
 
     assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+    assert.Contains(t, recorder.Body.String(), "db error")
 }
 
 func TestViewCartHandler_Success(t *testing.T) {
     gin.SetMode(gin.TestMode)
-    db, mock, err := sqlmock.New()
-    assert.NoError(t, err)
-    defer db.Close()
-
-    rows := newMovieRows().
-        AddRow(1, "Movie 1", 2020, "Plot 1", "Action", "tt1234567", "Actor A, Actor B").
-        AddRow(2, "Movie 2", 2021, "Plot 2", "Drama", "tt7654321", "Actor C, Actor D")
-
-    mock.ExpectQuery(`SELECT m.movie_id, m.title, m.year, m.plot, m.genre, m.imdbid, m.actors FROM cart c JOIN movies m ON c.movie_id = m.movie_id WHERE c.user_id = \$1`).
-        WithArgs("1").
-        WillReturnRows(rows)
-
-    router := setupRouter(db)
+    repo := &mockRepository{
+        GetCartItemsFunc: func(userID string) ([]movies.Movie, error) {
+            assert.Equal(t, "1", userID)
+            return []movies.Movie{
+                {MovieID: 1, Title: "Movie 1"},
+                {MovieID: 2, Title: "Movie 2"},
+            }, nil
+        },
+    }
+    router := setupRouter(repo)
 
     req, _ := http.NewRequest("GET", "/cart/1", nil)
     recorder := httptest.NewRecorder()
@@ -114,9 +112,9 @@ func TestViewCartHandler_Success(t *testing.T) {
     assert.Equal(t, http.StatusOK, recorder.Code)
 
     var resp struct {
-        Movies []movies.Movie
+        Movies []movies.Movie `json:"movies"`
     }
-    err = json.NewDecoder(recorder.Body).Decode(&resp)
+    err := json.NewDecoder(recorder.Body).Decode(&resp)
     assert.NoError(t, err)
     assert.Len(t, resp.Movies, 2)
     assert.Equal(t, "Movie 1", resp.Movies[0].Title)
@@ -125,15 +123,12 @@ func TestViewCartHandler_Success(t *testing.T) {
 
 func TestViewCartHandler_DBError(t *testing.T) {
     gin.SetMode(gin.TestMode)
-    db, mock, err := sqlmock.New()
-    assert.NoError(t, err)
-    defer db.Close()
-
-    mock.ExpectQuery(`SELECT m.movie_id, m.title, m.year, m.plot, m.genre, m.imdbid, m.actors FROM cart c JOIN movies m ON c.movie_id = m.movie_id WHERE c.user_id = \$1`).
-        WithArgs("1").
-        WillReturnError(errors.New("db error"))
-
-    router := setupRouter(db)
+    repo := &mockRepository{
+        GetCartItemsFunc: func(userID string) ([]movies.Movie, error) {
+            return nil, errors.New("db error")
+        },
+    }
+    router := setupRouter(repo)
 
     req, _ := http.NewRequest("GET", "/cart/1", nil)
     recorder := httptest.NewRecorder()
@@ -145,17 +140,12 @@ func TestViewCartHandler_DBError(t *testing.T) {
 
 func TestViewCartHandler_EmptyCart(t *testing.T) {
     gin.SetMode(gin.TestMode)
-    db, mock, err := sqlmock.New()
-    assert.NoError(t, err)
-    defer db.Close()
-
-    // Mock empty result set
-    rows := newMovieRows()
-    mock.ExpectQuery(`SELECT m.movie_id, m.title, m.year, m.plot, m.genre, m.imdbid, m.actors FROM cart c JOIN movies m ON c.movie_id = m.movie_id WHERE c.user_id = \$1`).
-        WithArgs("1").
-        WillReturnRows(rows)
-
-    router := setupRouter(db)
+    repo := &mockRepository{
+        GetCartItemsFunc: func(userID string) ([]movies.Movie, error) {
+            return []movies.Movie{}, nil
+        },
+    }
+    router := setupRouter(repo)
 
     req, _ := http.NewRequest("GET", "/cart/1", nil)
     recorder := httptest.NewRecorder()
@@ -164,29 +154,9 @@ func TestViewCartHandler_EmptyCart(t *testing.T) {
     assert.Equal(t, http.StatusOK, recorder.Code)
 
     var resp struct {
-        Movies []movies.Movie
+        Movies []movies.Movie `json:"movies"`
     }
-    err = json.NewDecoder(recorder.Body).Decode(&resp)
+    err := json.NewDecoder(recorder.Body).Decode(&resp)
     assert.NoError(t, err)
     assert.Len(t, resp.Movies, 0)
-}
-
-func TestViewCartHandler_RowScanError(t *testing.T) {
-    gin.SetMode(gin.TestMode)
-    db, mock, err := sqlmock.New()
-    assert.NoError(t, err)
-    defer db.Close()
-
-    router := setupRouter(db)
-
-    rows := newMovieRows().
-        AddRow("not-an-int", "Title", 2020, "Plot", "Genre", "imdbid", "Actors")
-    mock.ExpectQuery(`SELECT m.movie_id, m.title, m.year, m.plot, m.genre, m.imdbid, m.actors FROM cart c JOIN movies m ON c.movie_id = m.movie_id WHERE c.user_id = \$1`).
-        WithArgs("1").
-        WillReturnRows(rows)
-
-    req, _ := http.NewRequest("GET", "/cart/1", nil)
-    rec := httptest.NewRecorder()
-    router.ServeHTTP(rec, req)
-    assert.Equal(t, http.StatusInternalServerError, rec.Code)
 }
