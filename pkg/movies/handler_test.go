@@ -3,6 +3,7 @@ package movies
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -160,6 +161,43 @@ func TestListMoviesHandler_FilterByActorAndYear(t *testing.T) {
     assert.Equal(t, "Movie 4", movies[0].Title)
 }
 
+func TestListMoviesHandler_DBError(t *testing.T) {
+    gin.SetMode(gin.TestMode)
+    db, mock, err := sqlmock.New()
+    assert.NoError(t, err)
+    defer db.Close()
+
+    router := setupRouter(db)
+
+    mock.ExpectQuery(`SELECT \* FROM movies WHERE 1=1`).WillReturnError(errors.New("db error"))
+
+    req, _ := http.NewRequest("GET", "/movies", nil)
+    recorder := httptest.NewRecorder()
+    router.ServeHTTP(recorder, req)
+
+    assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+    assert.Contains(t, recorder.Body.String(), "db error")
+}
+
+func TestListMoviesHandler_RowScanError(t *testing.T) {
+    gin.SetMode(gin.TestMode)
+    db, mock, err := sqlmock.New()
+    assert.NoError(t, err)
+    defer db.Close()
+
+    router := setupRouter(db)
+
+    rows := newMovieRows().
+        AddRow("not-an-int", "Title", 2020, "Plot", "Genre", "imdbid", "Actors")
+    mock.ExpectQuery(`SELECT \* FROM movies WHERE 1=1`).WillReturnRows(rows)
+
+    req, _ := http.NewRequest("GET", "/movies", nil)
+    recorder := httptest.NewRecorder()
+    router.ServeHTTP(recorder, req)
+
+    assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+}
+
 func TestGetMovieByIDHandler_Found(t *testing.T) {
     gin.SetMode(gin.TestMode)
     db, mock, err := sqlmock.New()
@@ -201,4 +239,24 @@ func TestGetMovieByIDHandler_NotFound(t *testing.T) {
     router.ServeHTTP(recorder, req)
 
     assert.Equal(t, http.StatusNotFound, recorder.Code)
+}
+
+func TestGetMovieByIDHandler_DBError(t *testing.T) {
+    gin.SetMode(gin.TestMode)
+    db, mock, err := sqlmock.New()
+    assert.NoError(t, err)
+    defer db.Close()
+
+    router := setupRouter(db)
+
+    mock.ExpectQuery(`SELECT \* FROM movies WHERE movie_id = \$1`).
+        WithArgs("1").
+        WillReturnError(errors.New("db failure"))
+
+    req, _ := http.NewRequest("GET", "/movies/1", nil)
+    recorder := httptest.NewRecorder()
+    router.ServeHTTP(recorder, req)
+
+    assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+    assert.Contains(t, recorder.Body.String(), "db failure")
 }

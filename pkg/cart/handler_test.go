@@ -18,7 +18,12 @@ import (
 func setupRouter(db *sql.DB) *gin.Engine {
     router := gin.Default()
     router.POST("/cart", AddToCartHandler(db))
+    router.GET("/cart/:user_id", ViewCartHandler(db))
     return router
+}
+
+func newMovieRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{"movie_id", "title", "year", "plot", "genre", "imdbid", "actors"})
 }
 
 func TestAddToCartHandler_Success(t *testing.T) {
@@ -92,7 +97,7 @@ func TestViewCartHandler_Success(t *testing.T) {
     assert.NoError(t, err)
     defer db.Close()
 
-    rows := sqlmock.NewRows([]string{"movie_id", "title", "year", "plot", "genre", "imdbid", "actors"}).
+    rows := newMovieRows().
         AddRow(1, "Movie 1", 2020, "Plot 1", "Action", "tt1234567", "Actor A, Actor B").
         AddRow(2, "Movie 2", 2021, "Plot 2", "Drama", "tt7654321", "Actor C, Actor D")
 
@@ -100,8 +105,7 @@ func TestViewCartHandler_Success(t *testing.T) {
         WithArgs("1").
         WillReturnRows(rows)
 
-    router := gin.Default()
-    router.GET("/cart/:user_id", ViewCartHandler(db))
+    router := setupRouter(db)
 
     req, _ := http.NewRequest("GET", "/cart/1", nil)
     recorder := httptest.NewRecorder()
@@ -129,8 +133,7 @@ func TestViewCartHandler_DBError(t *testing.T) {
         WithArgs("1").
         WillReturnError(errors.New("db error"))
 
-    router := gin.Default()
-    router.GET("/cart/:user_id", ViewCartHandler(db))
+    router := setupRouter(db)
 
     req, _ := http.NewRequest("GET", "/cart/1", nil)
     recorder := httptest.NewRecorder()
@@ -147,13 +150,12 @@ func TestViewCartHandler_EmptyCart(t *testing.T) {
     defer db.Close()
 
     // Mock empty result set
-    rows := sqlmock.NewRows([]string{"movie_id", "title", "year", "plot", "genre", "imdbid", "actors"})
+    rows := newMovieRows()
     mock.ExpectQuery(`SELECT m.movie_id, m.title, m.year, m.plot, m.genre, m.imdbid, m.actors FROM cart c JOIN movies m ON c.movie_id = m.movie_id WHERE c.user_id = \$1`).
         WithArgs("1").
         WillReturnRows(rows)
 
-    router := gin.Default()
-    router.GET("/cart/:user_id", ViewCartHandler(db))
+    router := setupRouter(db)
 
     req, _ := http.NewRequest("GET", "/cart/1", nil)
     recorder := httptest.NewRecorder()
@@ -167,4 +169,24 @@ func TestViewCartHandler_EmptyCart(t *testing.T) {
     err = json.NewDecoder(recorder.Body).Decode(&resp)
     assert.NoError(t, err)
     assert.Len(t, resp.Movies, 0)
+}
+
+func TestViewCartHandler_RowScanError(t *testing.T) {
+    gin.SetMode(gin.TestMode)
+    db, mock, err := sqlmock.New()
+    assert.NoError(t, err)
+    defer db.Close()
+
+    router := setupRouter(db)
+
+    rows := newMovieRows().
+        AddRow("not-an-int", "Title", 2020, "Plot", "Genre", "imdbid", "Actors")
+    mock.ExpectQuery(`SELECT m.movie_id, m.title, m.year, m.plot, m.genre, m.imdbid, m.actors FROM cart c JOIN movies m ON c.movie_id = m.movie_id WHERE c.user_id = \$1`).
+        WithArgs("1").
+        WillReturnRows(rows)
+
+    req, _ := http.NewRequest("GET", "/cart/1", nil)
+    rec := httptest.NewRecorder()
+    router.ServeHTTP(rec, req)
+    assert.Equal(t, http.StatusInternalServerError, rec.Code)
 }
