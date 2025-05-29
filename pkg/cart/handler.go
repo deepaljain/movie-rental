@@ -34,7 +34,7 @@ func ViewCartHandler(repo Repository) gin.HandlerFunc {
 			return
 		}
         if len(moviesList) == 0 {
-            c.JSON(http.StatusOK, gin.H{"message": []movies.Movie{}})
+            c.JSON(http.StatusOK, gin.H{"movies": []movies.Movie{}})
             return
         }
 
